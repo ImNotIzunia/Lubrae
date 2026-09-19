@@ -164,6 +164,87 @@ Set-Format() {
 
 
 # SYNOPSIS
+# Set Disk for the wipe
+#
+# DESCRIPTION
+# Retrieve all the disks available and 
+# check if it's mounted or not then ask
+# the user to choose 
+# 
+# EXAMPLE
+# Is-Mounted
+# Is-System
+# Set-Disk
+#
+# OUTPUTS
+# None
+#
+Is-Mounted() {
+    lsblk -nrpo MOUNTPOINT "$1" 2>/dev/null | grep -q .
+}
+
+Is-System() {
+    lsblk -nrpo MOUNTPOINT "$1" 2>/dev/null | grep -qx "/"
+}
+
+Set-Disk() {
+    local -a names=() locks=()
+    local name size type model lock choice i
+
+    while read -r name size type model; do
+        [[ "$type" == "disk" ]] || continue
+        [[ "$name" == /dev/zram* ]] && continue
+
+        lock=""
+
+        if Is-System "$name"; then
+            lock="SYSTEM DISK"
+        elif Is-Mounted "$name"; then
+            lock="MOUNTED"
+        fi
+
+        names+=("$name")
+        locks+=("$lock")
+
+        printf '%s. %-12s %-8s %s' "${#names[@]}" "$name" "$size" "$model"
+        [[ -n "$lock" ]] && printf '    [%s - locked]' "$lock"
+        printf '\n'
+    done < <(lsblk -dnpo NAME,SIZE,TYPE,MODEL)
+
+    if [[ ${#names[@]} -eq 0 ]]; then
+        echo "No disk found"
+        read -rp "Press Enter to continue..." _ || exit 0
+        return
+    fi
+
+    echo ""
+
+    while true; do
+        read -rp "Disk number (empty to cancel): " choice || exit 0
+
+        if [[ -z "$choice" ]]; then
+            return
+        fi
+
+        if ! [[ "$choice" =~ ^[1-9][0-9]*$ ]] || (( choice > ${#names[@]} )); then
+            echo "Invalid choice. Please try again..."
+            continue
+        fi
+
+        i=$((choice -1))
+
+        if [[ -n "${locks[$i]}" ]]; then
+            echo "${names[$i]} is locked (${locks[$i]}), choose another disk..."
+            continue
+        fi
+
+        DISK="${names[$i]}"
+        return
+    done
+}
+
+
+# SYNOPSIS
 # Display the header
 #
 # DESCRIPTION
@@ -221,7 +302,7 @@ Show-Menu() {
         case "$choice" in
             1) 
                 clear
-                echo "disk" 
+                Set-Disk
             ;;
 
             2) 
