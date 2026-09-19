@@ -15,6 +15,9 @@
 set -u
 
 VERSION="0.1"
+DISK=""
+LOOPS=1
+FORMAT=""
 
 
 # SYNOPSIS
@@ -69,6 +72,39 @@ esac
 
 
 # SYNOPSIS
+# Set number of loops
+#
+# DESCRIPTION
+# Ask the user how many loops he wants
+# the script run for the wipe
+#
+# EXAMPLE
+# Set-Loops
+#
+# OUTPUTS
+# None
+#
+Set-Loops() {
+    local value
+    
+    while true; do
+        read -rp "Number of loops (>= 1, empty to cancel): " value || exit 0
+
+        if [[ -z "$value" ]]; then
+            return
+        fi
+
+        if [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
+            LOOPS="$value"
+            return
+        fi
+
+        echo "Invalid Number. Please try again..."
+    done
+}
+
+
+# SYNOPSIS
 # Display the header
 #
 # DESCRIPTION
@@ -85,6 +121,10 @@ Show-Header() {
     echo "=========="
     echo "  Lubrae"
     echo "=========="
+    echo ""
+    echo "Disk   : ${DISK:-(none)}"
+    echo "Loops  : $LOOPS"
+    echo "Format : ${FORMAT:-(none)}"
     echo ""
 }
 
@@ -117,7 +157,7 @@ Show-Menu() {
 
         echo ""
 
-        read -rp "Choice : " choice
+        read -rp "Choice : " choice || exit 0
 
         case "$choice" in
             1) 
@@ -127,7 +167,7 @@ Show-Menu() {
 
             2) 
                 clear
-                echo "loops" 
+                Set-Loops
             ;;
 
             3) 
