@@ -18,6 +18,24 @@ VERSION="0.1"
 DISK=""
 LOOPS=1
 FORMAT=""
+TEST_MODE=0
+
+
+# SYNOPSIS
+# Display a confirmation message
+#
+# DESCRIPTION
+# Creating a "validation" action from the user
+#
+# EXAMPLE
+# Confirm
+#
+# OUTPUTS
+# None
+#
+Confirm() {
+    read -rp "Press Enter to continue..." _ || exit 0
+}
 
 
 # SYNOPSIS
@@ -56,9 +74,11 @@ case "${1:-}" in
         exit 0
     ;;
 
-#    --file)
-#        [[ -f "${2:-}" ]] || { echo "File not found: ${2:-}" >&2; exit 1; }
-#    ;;
+    --file)
+        [[ -f "${2:-}" ]] || { echo "File not found: ${2:-}" >&2; exit 1; }
+        TEST_MODE=1
+        DISK="$2"
+    ;;
 
     "")
     ;;
@@ -191,6 +211,12 @@ Set-Disk() {
     local -a names=() locks=()
     local name size type model lock choice i
 
+    if [[ $TEST_MODE -eq 1 ]]; then
+        echo "Test mode enabled : target file $DISK"
+        read -rp "Press Enter to continue..." _ || exit 0
+        return
+    fi
+
     while read -r name size type model; do
         [[ "$type" == "disk" ]] || continue
         [[ "$name" == /dev/zram* ]] && continue
@@ -241,6 +267,97 @@ Set-Disk() {
         DISK="${names[$i]}"
         return
     done
+}
+
+
+# SYNOPSIS
+# Get Disk wiped
+#
+# DESCRIPTION
+# Retrieve the size of the disk and
+# proceed to the wipe after confirmation from the user
+#
+# EXAMPLE
+# Get-DiskSize
+# WipeDisk
+#
+# OUTPUTS
+# None
+#
+Get-DiskSize() {
+    if [[ -b "$1" ]]; then
+        blockdev --getsize64 "$1"
+    else
+        stat -c %s "$1"
+    fi
+}
+
+WipeDisk(){
+    local size validate n
+    local -a flags
+
+    if [[ -z "$DISK" ]]; then
+        echo "A disk need to be choosen first (option 1)"
+        Confirm
+        return
+    fi
+
+    if [[ -b "$DISK" ]] && Is-Mounted "$DISK"; then
+        echo "$DISK is mounted, operation aborted"
+        Confirm
+        return
+    fi
+
+    size=$(Get-DiskSize "$DISK")
+
+    echo ""
+
+    echo "SUMMARY"
+    echo ""
+    echo "Target : $DISK"
+    echo "Size   : $size bytes"
+    echo "Loops  : $LOOPS"
+    echo ""
+    echo "ALL DATA ON $DISK WILL BE DESTROYED"
+
+    read -rp "Type the exact path of the disk to confirm (empty to cancel): " validate || exit 0
+
+    if [[ "$validate" != "$DISK" ]]; then
+        echo "Cancelled..."
+        Confirm
+        return
+    fi
+
+    if [[ -b "$DISK" ]]; then
+        flags=(conv=fsync oflag=direct)
+    else
+        flags=("conv=fsync,notrunc")
+    fi
+
+    for (( n = 1; n <= LOOPS; n++)); do
+        echo ""
+        echo ">>> Pass $n/$LOOPS"
+        dd if=/dev/urandom of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress \
+        || { echo "dd failed, aborting..."; Confirm; return; }
+        dd if=/dev/zero of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress \
+        || { echo "dd failed, aborting..."; Confirm; return; }
+    done
+
+    echo ""
+    echo ">>> Final pass (zeroing)"
+    echo ""
+
+    dd if=/dev/zero of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress \
+    || { echo "dd failed, aborting..."; Confirm; return; }
+
+    echo ""
+    echo "Done"
+
+    if [[ $TEST_MODE -eq 0 ]]; then
+        DISK=""
+    fi
+
+    Confirm
 }
 
 
@@ -317,7 +434,7 @@ Show-Menu() {
 
             4) 
                 clear
-                echo "launch" 
+                WipeDisk
             ;;
 
             5) 
