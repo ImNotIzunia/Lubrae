@@ -12,6 +12,61 @@
 # License : MIT License
 
 
+set -u
+
+VERSION="0.1"
+
+
+# SYNOPSIS
+# Display the different usage options
+#
+# DESCRIPTION
+# Display the different usage options for the script
+#
+# EXAMPLE
+# Usage
+#
+# OUTPUTS
+# None
+#
+Usage() {
+    cat <<EOF
+Lubrae
+
+Version : $VERSION
+Usage :
+    sudo ./lubrae.sh            Launch the main menu
+    ./lubrae.sh --file FILE     Launch the wipe on a file (testing without a risk)
+    ./lubrae.sh --help          Show this menu
+    ./lubrae.sh --version       Show the current version
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        Usage;
+        exit 0
+    ;;
+
+    -V|--version)
+        echo "Lubrae $VERSION";
+        exit 0
+    ;;
+
+#    --file)
+#        [[ -f "${2:-}" ]] || { echo "File not found: ${2:-}" >&2; exit 1; }
+#    ;;
+
+    "")
+    ;;
+
+    *)
+        echo "Invalid Option : $1" >&2;
+        Usage >&2;
+        exit 1
+    ;;
+esac
+
 
 # SYNOPSIS
 # Display the header
@@ -32,6 +87,7 @@ Show-Header() {
     echo "=========="
     echo ""
 }
+
 
 # SYNOPSIS
 # Displays the main menu
@@ -88,12 +144,17 @@ Show-Menu() {
                 exit 0 
             ;;
             
-            *) ;;
+            *) 
+                clear
+                echo "Invalid choice. Please try again.."
+                sleep 1
+            ;;
         esac
     done
 }
 
 
 
+# Main
 Show-Menu
 
