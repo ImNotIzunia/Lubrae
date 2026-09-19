@@ -271,6 +271,31 @@ Set-Disk() {
 
 
 # SYNOPSIS
+# Replace data
+#
+# DESCRIPTION
+# Use the dd command to replace the data
+# with random data and zeros
+#
+# EXAMPLE
+# Set-Random
+# Set-Zero
+#
+# OUTPUTS
+# None
+#
+Set-Random() {
+    echo "> Fill with random data"
+    dd if=/dev/urandom of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress
+}
+
+Set-Zero() {
+    echo "> Fill with zero"
+    dd if=/dev/zero of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress
+}
+
+
+# SYNOPSIS
 # Get Disk wiped
 #
 # DESCRIPTION
@@ -309,6 +334,12 @@ WipeDisk(){
     fi
 
     size=$(Get-DiskSize "$DISK")
+    
+    if [[ "$size" -le 0 ]]; then
+        echo "Size of $DISK is 0, nothing to wipe..."
+        Confirm
+        return
+    fi
 
     echo ""
 
@@ -337,18 +368,15 @@ WipeDisk(){
     for (( n = 1; n <= LOOPS; n++)); do
         echo ""
         echo ">>> Pass $n/$LOOPS"
-        dd if=/dev/urandom of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress \
-        || { echo "dd failed, aborting..."; Confirm; return; }
-        dd if=/dev/zero of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress \
-        || { echo "dd failed, aborting..."; Confirm; return; }
+        Set-Random || { echo "dd failed, aborting..."; Confirm; return; }
+        Set-Zero || { echo "dd failed, aborting..."; Confirm; return; }
     done
 
     echo ""
-    echo ">>> Final pass (zeroing)"
+    echo ">>> Final pass"
     echo ""
 
-    dd if=/dev/zero of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress \
-    || { echo "dd failed, aborting..."; Confirm; return; }
+    Set-Zero || { echo "dd failed, aborting..."; Confirm; return; }
 
     echo ""
     echo "Done"
