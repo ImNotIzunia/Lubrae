@@ -1,6 +1,4 @@
-EXIT#!/bin/bash
-
-# shellcheck disable=SC2317
+#!/bin/bash
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -171,7 +169,7 @@ lsblk() {
                 "/dev/sdc 1T disk WD Blue" \
                 "/dev/zram0 4G disk " \
                 "/dev/sr0 1G rom DVD"
-            ;;
+        ;;
         "-nrpo MOUNTPOINT /dev/sda") printf '\n/\n' ;;
         "-nrpo MOUNTPOINT /dev/sdb") printf '/media/usb\n' ;;
         "-nrpo MOUNTPOINT /dev/sdc") printf '\n\n' ;;
@@ -250,8 +248,6 @@ section "Get-Tools (apt-get, sudo simulés)"
 PACKAGE_OF["fakeA1"]=pkgA
 PACKAGE_OF["fakeA2"]=pkgA
 PACKAGE_OF["fakeB"]=pkgB
-
-# shellcheck disable=SC2034
 PACKAGE_OF["fakeC"]=pkgC
 
 APT_LOG="$TMP/apt.log"
@@ -391,7 +387,7 @@ LOOPS=1
 FORMAT=""
 out="$(Show-Header)"
 assert_contains "$out" "Target : (none)"       "sans cible : (none)"
-assert_contains "$out" "Loops  : 1"             "1 boucle"
+assert_contains "$out" "Loops  : 1" "1 boucle : affichée"
 assert_contains "$out" "Format : (none)"       "sans formatage : (none)"
 
 DISK="$TMP/ok.img"
@@ -399,7 +395,7 @@ LOOPS=3
 FORMAT="ext4"
 out="$(Show-Header)"
 assert_contains "$out" "Target : $TMP/ok.img (file)" "fichier : (file)"
-assert_contains "$out" "Loops  : 3"                  "3 boucles"
+assert_contains "$out" "Loops  : 3"                 "3 boucles : affichée"
 assert_contains "$out" "Format : ext4"               "formatage affiché"
 
 
