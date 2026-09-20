@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# shellcheck disable=SC2317
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # shellcheck source=/dev/null
@@ -169,7 +171,7 @@ lsblk() {
                 "/dev/sdc 1T disk WD Blue" \
                 "/dev/zram0 4G disk " \
                 "/dev/sr0 1G rom DVD"
-        ;;
+            ;;
         "-nrpo MOUNTPOINT /dev/sda") printf '\n/\n' ;;
         "-nrpo MOUNTPOINT /dev/sdb") printf '/media/usb\n' ;;
         "-nrpo MOUNTPOINT /dev/sdc") printf '\n\n' ;;
@@ -248,6 +250,8 @@ section "Get-Tools (apt-get, sudo simulés)"
 PACKAGE_OF["fakeA1"]=pkgA
 PACKAGE_OF["fakeA2"]=pkgA
 PACKAGE_OF["fakeB"]=pkgB
+
+# shellcheck disable=SC2034
 PACKAGE_OF["fakeC"]=pkgC
 
 APT_LOG="$TMP/apt.log"
