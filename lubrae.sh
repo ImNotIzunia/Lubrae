@@ -63,6 +63,7 @@ Usage :
 EOF
 }
 
+
 case "${1:-}" in
     -h|--help)
         Usage;
@@ -90,6 +91,12 @@ case "${1:-}" in
     ;;
 esac
 
+
+if [[ $TEST_MODE -eq 0 && $EUID -ne 0 ]]; then
+    echo "Lubrae needs to run with root privileges..." >&2
+    echo "Run : sudo $0" >&2
+    exit 1
+fi
 
 # SYNOPSIS
 # Set number of loops
@@ -194,6 +201,7 @@ Set-Format() {
 # EXAMPLE
 # Is-Mounted
 # Is-System
+# Is-SSD
 # Set-Disk
 #
 # OUTPUTS
@@ -205,6 +213,10 @@ Is-Mounted() {
 
 Is-System() {
     lsblk -nrpo MOUNTPOINT "$1" 2>/dev/null | grep -qx "/"
+}
+
+Is-SSD() {
+    [[ "$(lsblk -dno ROTA "$1" 2>/dev/null | tr -d '[:space:]')" == "0" ]]
 }
 
 Set-Disk() {
@@ -267,6 +279,75 @@ Set-Disk() {
         DISK="${names[$i]}"
         return
     done
+}
+
+
+# SYNOPSIS
+# Setup the partition
+#
+# DESCRIPTION
+# Retrieve the partition of the disk and
+# Format it in the right format
+#
+# EXAMPLE
+# Get-Partition
+# Wait-Partition
+# Check-Tools
+# Format-Disk
+#
+# OUTPUTS
+# None
+#
+Get-Partition() {
+    if [[ "$1" =~ [0-9]$ ]]; then
+        echo "${1}p1"
+    else
+        echo "${1}1"
+    fi
+}
+
+Wait-Partition() {
+    local i
+
+    for (( i = 1; i <= 20; i++)); do
+        [[ -b "$1" ]] && return 0
+        sleep 0.5
+    done
+
+    return 1
+}
+
+Check-Tools() {
+    local tool
+
+    for tool in parted "mkfs.$FORMAT"; do
+        if ! command -v "$tool" >/dev/null; then
+            echo "Missing tool : $tool"
+            return 1
+        fi
+    done
+}
+
+Format-Disk() {
+    local part
+
+    echo ""
+    echo ">>> Formatting ($FORMAT)"
+
+    parted -s "$DISK" mklabel gpt mkpart primary 1MiB 100% || return 1
+    partprobe "$DISK" 2>/dev/null
+    command -v udevadm >/dev/null && udevadm settle
+
+    part=$(Get-Partition "$DISK")
+    Wait-Partition "$part" || { echo "Partition $part not found"; return 1; }
+
+    case "$FORMAT" in
+        ext4) mkfs.ext4 -F "$part" ;;
+        xfs) mkfs.xfs -f "$part" ;;
+        vfat) mkfs.vfat -F 32 "$part" ;;
+        exfat) mkfs.exfat "$part" ;;
+        ntfs) mkfs.ntfs -f "$part" ;;
+    esac
 }
 
 
@@ -341,6 +422,10 @@ WipeDisk(){
         return
     fi
 
+    if [[ -n "$FORMAT" && $TEST_MODE -eq 0 ]]; then
+        Check-Tools || { Confirm; return; }
+    fi
+
     echo ""
 
     echo "SUMMARY"
@@ -348,6 +433,7 @@ WipeDisk(){
     echo "Target : $DISK"
     echo "Size   : $size bytes"
     echo "Loops  : $LOOPS"
+    echo "Format : $FORMAT"
     echo ""
     echo "ALL DATA ON $DISK WILL BE DESTROYED"
 
@@ -377,6 +463,15 @@ WipeDisk(){
     echo ""
 
     Set-Zero || { echo "dd failed, aborting..."; Confirm; return; }
+
+    if [[ -n "$FORMAT" ]]; then
+        if [[ $TEST_MODE -eq 1 ]]; then
+            echo ""
+            echo "No formatting"
+        else
+            Format-Disk || echo "Formatting failed"
+        fi
+    fi
 
     echo ""
     echo "Done"
