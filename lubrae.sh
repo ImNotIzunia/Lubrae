@@ -1,26 +1,37 @@
-#!/bin/bash
+#!bin/bash
 
 # SYNOPSIS
-# Lubrae - Main script functions
+# Lubrae  Main script functions
 #
 # DESCRIPTION
-# Lubrae is a tool to wipe disks and partitions
+# Lubrae is a tool to wipe disks, partitions and files
 #
 # NOTES
 # Author  : Izunia
-# Version : 0.5
+# Version : 1.0
 # License : MIT License
 
 
-set -u
+VERSION="1.0"
 
-VERSION="0.5"
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "Lubrae only works on Linux" >&2
+    exit 1
+fi
+
+fi (( BASH_VERSINFO[0] < 4 )); then
+    echo "Lubrae needs Bash 4 or newer (found : $BASH_VERSION)" >&2
+    exit 1
+fi
+
 
 DISK=""
 LOOPS=1
 FORMAT=""
 
 PATH="$PATH:/usr/local/sbin:/usr/sbin:/sbin"
+
 
 declare -A PACKAGE_OF=(
     [dd]=coreutils
@@ -39,90 +50,115 @@ declare -A PACKAGE_OF=(
 
 
 # SYNOPSIS
-# Display a confirmation message
+# Wait for the user
 #
 # DESCRIPTION
-# Creating a "validation" action from the user
+# Pause the script until the user presses Enter
 #
 # EXAMPLE
-# Confirm
+# Wait-Key
 #
 # OUTPUTS
 # None
 #
-Confirm() {
+Wait-Key() {
     read -rp "Press Enter to continue..." _ || exit 0
 }
 
 
 # SYNOPSIS
 # Display the different usage options
-#
+# 
 # DESCRIPTION
-# Display the different usage options for the script
+# Display the different usages options for the script
 #
 # EXAMPLE
 # Usage
 #
 # OUTPUTS
 # None
-#
+# 
 Usage() {
     cat <<EOF
 Lubrae
 
 Version : $VERSION
 Usage :
-    sudo ./lubrae.sh            Launch the main menu
-    ./lubrae.sh --file FILE     Launch the wipe on a file
+    sudo ./lubrae.sh            Launch the main menu (root is needed to wipe a disk)
+    ./lubrae.sh --file FILE     Launch the main menu with a file as a target (no root needed)
     ./lubrae.sh --help          Show this menu
     ./lubrae.sh --version       Show the current version
 EOF
 }
 
 
-case "${1:-}" in
-    -h|--help)
-        Usage;
-        exit 0
-    ;;
+# SYNOPSIS
+# Check and read the arguments
+#
+# DESCRIPTION
+# Validate a file given by the user and 
+# handle the options of the script
+#
+# EXAMPLE
+# Get-File
+# Get-Args
+#
+# OUTPUTS
+# None
+#
+Get-File() {
+    local path="$1"
 
-    -V|--version)
-        echo "Lubrae $VERSION";
-        exit 0
-    ;;
+    if [[ ! -e "$path" ]]; then
+        echo "[ERROR] File not found : $path"
+        return 1
+    fi
 
-    --file)
-        [[ -f "${2:-}" ]] || { echo "File not found: ${2:-}" >&2; exit 1; }
-        DISK="$2"
-    ;;
+    if [[ -b "$path" ]]; then
+        echo "[WARNING] $path is a block device : use \"Choose Target > Disk\" instead"
+        return 1
+    fi
 
-    "")
-    ;;
+    if [[ ! -f $path ]]; then
+        echo "[ERROR] $path is not a regular file"
+        return 1
+    fi 
 
-    *)
-        echo "Invalid Option : $1" >&2;
-        Usage >&2;
-        exit 1
-    ;;
-esac
+    if [[ ! -w "$path" ]]; then
+        echo "[ERROR] $path is not writable (permission denied)"
+        return 1
+    fi
 
+    return 0
+}
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "Lubrae only works on Linux" >&2
-    exit 1
-fi
+Get-Args() {
+    case "${1:-}" in
+        -h|--help)
+            Usage
+            exit 0
+        ;;
 
-if (( BASH_VERSINFO[0] < 4)); then
-    echo "Lubrae needs Bash 4 or newer (found : $BASH_VERSION)" >&2
-    exit 1
-fi
+        -V|--version)
+            echo "Lubrae $VERSION"
+            exit 0
+        ;;
 
-if [[ $EUID -ne 0 ]]; then
-    echo "Lubrae needs to run with root privileges..." >&2
-    echo "Run : sudo $0" >&2
-    exit 1
-fi
+        -f|--file)
+            Validate-File "${2:-}" >&2 || exit 1
+            DISK="$(realpath "$2")"
+        ;;
+
+        "")
+        ;;
+
+        *)
+            echo "Invalid Option : $1" >&2
+            Usage >&2
+            exit 1
+        ;;
+    esac
+}
 
 
 # SYNOPSIS
@@ -141,7 +177,7 @@ fi
 #
 Install-Packages() {
     local -a cmd
-
+ 
     if [[ $EUID -eq 0 ]]; then
         cmd=(apt-get install -y)
     elif command -v sudo >/dev/null; then
@@ -150,7 +186,7 @@ Install-Packages() {
         echo "Root privileges are required to install packages..."
         return 1
     fi
-
+ 
     "${cmd[@]}" "$@" || { echo "Installation failed... Try : sudo apt update"; return 1; }
 }
 
@@ -158,47 +194,47 @@ Get-Tools() {
     local -a missing=() packages=()
     local -A seen=()
     local tool pkg answer
-
+ 
     for tool in "$@"; do
         command -v "$tool" >/dev/null || missing+=("$tool")
     done
-
+ 
     if [[ ${#missing[@]} -eq 0 ]]; then
         return 0
     fi
-
+ 
     echo "Missing tools : ${missing[*]}"
-
+ 
     if ! command -v apt-get >/dev/null; then
         echo "apt-get not found"
         return 1
     fi
-
+ 
     for tool in "${missing[@]}"; do
         pkg="${PACKAGE_OF[$tool]:-}"
-
+ 
         if [[ -z "$pkg" ]]; then
             echo "No package found for $tool"
             return 1
         fi
-
+ 
         if [[ -z "${seen[$pkg]:-}" ]]; then
             seen[$pkg]=1
             packages+=("$pkg")
         fi
     done
-
+ 
     echo "Packages to install : ${packages[*]}"
-    
+ 
     read -rp "Install them now with apt? [y/N] " answer || exit 0
-
+ 
     if [[ ! "$answer" =~ ^[yY]$ ]]; then
         echo "Abort Installation"
         return 1
     fi
-
+ 
     Install-Packages "${packages[@]}" || return 1
-
+ 
     for tool in "${missing[@]}"; do
         if ! command -v "$tool" >/dev/null; then
             echo "$tool is still missing after the installation"
@@ -223,19 +259,19 @@ Get-Tools() {
 #
 Set-Loops() {
     local value
-    
+ 
     while true; do
         read -rp "Number of loops (>= 1, empty to cancel): " value || exit 0
-
+ 
         if [[ -z "$value" ]]; then
             return
         fi
-
+ 
         if [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
             LOOPS="$value"
             return
         fi
-
+ 
         echo "Invalid Number. Please try again..."
     done
 }
@@ -245,7 +281,7 @@ Set-Loops() {
 # Set Disk Format
 #
 # DESCRIPTION
-# Ask the user what kind of 
+# Ask the user what kind of
 # format he wants after the wipe
 #
 # EXAMPLE
@@ -256,18 +292,18 @@ Set-Loops() {
 #
 Set-Format() {
     local value
-
+ 
     echo ""
-
+ 
     echo "1. none"
     echo "2. ext4"
     echo "3. xfs"
     echo "4. vfat (FAT32)"
     echo "5. exfat"
     echo "6. ntfs"
-
+ 
     echo ""
-
+ 
     while true; do
         read -rp "Format type (empty to cancel): " value || exit 0
 
@@ -301,18 +337,20 @@ Set-Format() {
 
 
 # SYNOPSIS
-# Set Disk for the wipe
+# Set the target for the wipe
 #
 # DESCRIPTION
-# Retrieve all the disks available and 
+# Retrieve all the disks available and
 # check if it's mounted or not then ask
-# the user to choose 
-# 
+# the user to choose, or ask for a file
+#
 # EXAMPLE
 # Is-Mounted
 # Is-System
 # Is-SSD
 # Set-Disk
+# Set-File
+# Set-Target
 #
 # OUTPUTS
 # None
@@ -320,70 +358,125 @@ Set-Format() {
 Is-Mounted() {
     lsblk -nrpo MOUNTPOINT "$1" 2>/dev/null | grep -q .
 }
-
+ 
 Is-System() {
     lsblk -nrpo MOUNTPOINT "$1" 2>/dev/null | grep -qx "/"
 }
-
+ 
 Is-SSD() {
     [[ "$(lsblk -dno ROTA "$1" 2>/dev/null | tr -d '[:space:]')" == "0" ]]
 }
 
 Set-Disk() {
-    local -a names=() locks=()
+    local -a names=() lock=()
     local name size type model lock choice i
 
-    Get-Tools lsblk blockdev || { Confirm; return; }
+    if [[ $ EUID -ne 0 ]]; then
+        echo "Wiping a disk requires Lubrae to run with root privileges..."
+        echo "Please run : sudo $0"
+        echo "(A file can be wiped without root : choose \"File\")"
+        Wait-Key
+        return
+    fi
+
+    Get-Tools lsblk blockdev || { Wait-Key; return; }
 
     while read -r name size type model; do
         [[ "$type" == "disk" ]] || continue
         [[ "$name" == /dev/zram* ]] && continue
 
         lock=""
-
+ 
         if Is-System "$name"; then
             lock="SYSTEM DISK"
         elif Is-Mounted "$name"; then
             lock="MOUNTED"
         fi
-
+ 
         names+=("$name")
         locks+=("$lock")
-
+ 
         printf '%s. %-12s %-8s %s' "${#names[@]}" "$name" "$size" "$model"
         [[ -n "$lock" ]] && printf '    [%s - locked]' "$lock"
         printf '\n'
     done < <(lsblk -dnpo NAME,SIZE,TYPE,MODEL)
-
+ 
     if [[ ${#names[@]} -eq 0 ]]; then
         echo "No disk found"
-        read -rp "Press Enter to continue..." _ || exit 0
+        Wait-Key
         return
     fi
-
+ 
     echo ""
 
     while true; do
         read -rp "Disk number (empty to cancel): " choice || exit 0
-
+ 
         if [[ -z "$choice" ]]; then
             return
         fi
-
+ 
         if ! [[ "$choice" =~ ^[1-9][0-9]*$ ]] || (( choice > ${#names[@]} )); then
             echo "Invalid choice. Please try again..."
             continue
         fi
-
-        i=$((choice -1))
-
+ 
+        i=$((choice - 1))
+ 
         if [[ -n "${locks[$i]}" ]]; then
             echo "${names[$i]} is locked (${locks[$i]}), choose another disk..."
             continue
         fi
-
+ 
         DISK="${names[$i]}"
         return
+    done
+}
+
+Set-File() {
+    local path
+
+    while true; do
+        read -erp "File path (empty to cancel): " path || exit 0
+
+        if [[ -z "$path" ]]; then
+            return
+        fi
+
+        if Validate-File "$path"; then
+            DISK="$(realpath "$path")"
+            return
+        fi
+    done
+}
+
+Set-Target() {
+    local choice
+
+    echo ""
+
+    echo "1. Disk"
+    echo "2. File"
+
+    echo ""
+
+    while true; do
+        read -rp "Target type (empty to cancel): " choice || exit 0
+
+        case "$choice" in
+            1)
+            Set-Disk; return ;;
+
+            2)
+            Set-File; return ;;
+
+            "")
+            return ;;
+
+            *)
+            echo "Invalid choice. Please try again..."
+            ;;
+        esac
     done
 }
 
@@ -399,6 +492,7 @@ Set-Disk() {
 # Get-Partition
 # Wait-Partition
 # Check-Tools
+# Make-Filesystem
 # Format-Disk
 #
 # OUTPUTS
@@ -414,45 +508,68 @@ Get-Partition() {
 
 Wait-Partition() {
     local i
-
+ 
     for (( i = 1; i <= 20; i++)); do
         [[ -b "$1" ]] && return 0
         sleep 0.5
     done
-
+ 
     return 1
 }
 
 Check-Tools() {
     local -a tools=("mkfs.$FORMAT")
-
+ 
     if [[ -b "$DISK" ]]; then
         tools+=(parted partprobe)
     fi
-
+ 
     Get-Tools "${tools[@]}"
+}
+
+Make-Filesystem() {
+    case "$FORMAT" in
+        ext4) 
+            mkfs.ext4 -F "$1" ;;
+
+        xfs) 
+            mkfs.xfs -f "$1" ;;
+
+        vfat) 
+            mkfs.vfat -F 32 "$1" ;;
+
+        exfat) 
+            mkfs.exfat "$1" ;;
+
+        ntfs)
+            if [[ -f "$1" ]]; then
+                mkfs.ntfs -F -f "$1"
+            else
+                mkfs.ntfs -f "$1"
+            fi
+        ;;
+    esac
 }
 
 Format-Disk() {
     local part
-
+ 
     echo ""
     echo ">>> Formatting ($FORMAT)"
-
+ 
+    if [[ -f "$DISK" ]]; then
+        Make-Filesystem "$DISK"
+        return
+    fi
+ 
     parted -s "$DISK" mklabel gpt mkpart primary 1MiB 100% || return 1
     partprobe "$DISK" 2>/dev/null
     command -v udevadm >/dev/null && udevadm settle
-
+ 
     part=$(Get-Partition "$DISK")
     Wait-Partition "$part" || { echo "Partition $part not found"; return 1; }
-
-    case "$FORMAT" in
-        ext4) mkfs.ext4 -F "$part" ;;
-        xfs) mkfs.xfs -f "$part" ;;
-        vfat) mkfs.vfat -F 32 "$part" ;;
-        exfat) mkfs.exfat "$part" ;;
-        ntfs) mkfs.ntfs -f "$part" ;;
-    esac
+ 
+    Make-Filesystem "$part"
 }
 
 
@@ -474,7 +591,7 @@ Set-Random() {
     echo "> Fill with random data"
     dd if=/dev/urandom of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress
 }
-
+ 
 Set-Zero() {
     echo "> Fill with zero"
     dd if=/dev/zero of="$DISK" bs=4M count="$size" iflag=fullblock,count_bytes "${flags[@]}" status=progress
@@ -490,7 +607,7 @@ Set-Zero() {
 #
 # EXAMPLE
 # Get-DiskSize
-# WipeDisk
+# Start-Wipe
 #
 # OUTPUTS
 # None
@@ -503,83 +620,114 @@ Get-DiskSize() {
     fi
 }
 
-WipeDisk(){
+Start-Wipe() {
     local size validate n
     local -a flags
-
+ 
     if [[ -z "$DISK" ]]; then
-        echo "A disk need to be choosen first (option 1)"
-        Confirm
+        echo "A target needs to be chosen first (option 1)"
+        Wait-Key
         return
     fi
-
+ 
+    if [[ ! -e "$DISK" ]]; then
+        echo "$DISK does not exist anymore, operation aborted"
+        Wait-Key
+        return
+    fi
+ 
+    if [[ -f "$DISK" ]]; then
+        Validate-File "$DISK" || { Wait-Key; return; }
+    fi
+ 
+    if [[ -b "$DISK" && $EUID -ne 0 ]]; then
+        echo "Wiping a disk requires root privileges. Run : sudo $0"
+        Wait-Key
+        return
+    fi
+ 
     if [[ -b "$DISK" ]] && Is-Mounted "$DISK"; then
         echo "$DISK is mounted, operation aborted"
-        Confirm
+        Wait-Key
         return
-    fi
+    fi   
 
-    size=$(Get-DiskSize "$DISK")
-    
+    size=$(Get-DiskSize "$DISK") || { echo "Cannot read the size of $DISK"; Wait-Key; return; }
+ 
     if [[ "$size" -le 0 ]]; then
         echo "Size of $DISK is 0, nothing to wipe..."
-        Confirm
+        Wait-Key
         return
     fi
-
+ 
     if [[ -n "$FORMAT" ]]; then
-        Check-Tools || { Confirm; return; }
+        Check-Tools || { Wait-Key; return; }
     fi
-
+ 
     echo ""
-
+ 
     echo "SUMMARY"
     echo ""
     echo "Target : $DISK"
+ 
+    if [[ -f "$DISK" ]]; then
+        echo "Type   : file"
+    else
+        echo "Type   : disk"
+    fi
+ 
     echo "Size   : $size bytes"
     echo "Loops  : $LOOPS"
-    echo "Format : $FORMAT"
-    echo ""
-    echo "ALL DATA ON $DISK WILL BE DESTROYED"
+    echo "Format : ${FORMAT:-none}"
 
-    read -rp "Type the exact path of the disk to confirm (empty to cancel): " validate || exit 0
+    if [[ -n "$FORMAT" && -f "$DISK" ]]; then
+        echo "         (filesystem written directly in the file, no partition table)"
+    fi
+ 
+    echo ""
+
+    if [[ -f "$DISK" ]]; then
+        echo "NOTE : the file is overwritten in place and kept (same size), it is not deleted"
+        echo ""
+    fi
+
+    echo "ALL DATA ON $DISK WILL BE DESTROYED"
 
     if [[ "$validate" != "$DISK" ]]; then
         echo "Cancelled..."
-        Confirm
+        Wait-Key
         return
     fi
-
+ 
     if [[ -b "$DISK" ]]; then
         flags=(conv=fsync oflag=direct)
     else
         flags=("conv=fsync,notrunc")
     fi
-
+ 
     for (( n = 1; n <= LOOPS; n++)); do
         echo ""
         echo ">>> Pass $n/$LOOPS"
-        Set-Random || { echo "dd failed, aborting..."; Confirm; return; }
-        Set-Zero || { echo "dd failed, aborting..."; Confirm; return; }
+        Set-Random || { echo "dd failed, aborting..."; Wait-Key; return; }
+        Set-Zero || { echo "dd failed, aborting..."; Wait-Key; return; }
     done
-
+ 
     echo ""
     echo ">>> Final pass"
     echo ""
-
-    Set-Zero || { echo "dd failed, aborting..."; Confirm; return; }
-
+ 
+    Set-Zero || { echo "dd failed, aborting..."; Wait-Key; return; }
+ 
     if [[ -n "$FORMAT" ]]; then
-        echo ""
-        echo "No formatting"
-    else
         Format-Disk || echo "Formatting failed"
     fi
-
+ 
     echo ""
     echo "Done"
-
-    Confirm
+ 
+    DISK=""
+ 
+    Wait-Key
 }
 
 
@@ -590,19 +738,34 @@ WipeDisk(){
 # Display the title and information for the menu
 #
 # EXAMPLE
+# Clear-Screen
 # Show-Header
 #
 # OUTPUTS
 # None
 #
+Clear-Screen() {
+    if [[ -t 1 ]]; then
+        clear
+    fi
+}
+ 
 Show-Header() {
+    local kind=""
+ 
+    if [[ -b "$DISK" ]]; then
+        kind=" (disk)"
+    elif [[ -f "$DISK" ]]; then
+        kind=" (file)"
+    fi
+ 
     echo ""
     echo "=========="
     echo "  Lubrae"
     echo "=========="
     echo ""
-    echo "Disk   : ${DISK:-(none)}"
-    echo "Loops  : $LOOPS"
+    echo "Target : ${DISK:-(none)}$kind"
+    echo "Loops  : $LOOPS)"
     echo "Format : ${FORMAT:-(none)}"
     echo ""
 }
@@ -612,9 +775,9 @@ Show-Header() {
 # Displays the main menu
 #
 # DESCRIPTION
-# Loops and prompt the user to choose a disk, a number
+# Loops and prompt the user to choose a target, a number
 # of loops, the type of format and launch the wipe
-# 
+#
 # EXAMPLE
 # Show-Menu
 #
@@ -622,50 +785,56 @@ Show-Header() {
 # None
 #
 Show-Menu() {
-    
+    local choice
+ 
     while true; do
-        echo ""
-
+        Clear-Screen
         Show-Header
-
-        echo "1. Choose disk"
+ 
+        echo "1. Choose target (disk or file)"
         echo "2. Number of loops"
         echo "3. Format type"
-        echo "4. Launch"
+ 
+        if [[ -z "$DISK" ]]; then
+            echo "4. Launch (choose a target first)"
+        else
+            echo "4. Launch"
+        fi
+ 
         echo "5. Exit"
-
+ 
         echo ""
-
+ 
         read -rp "Choice : " choice || exit 0
-
+ 
         case "$choice" in
-            1) 
-                clear
-                Set-Disk
+            1)
+                Clear-Screen
+                Set-Target
             ;;
-
-            2) 
-                clear
+ 
+            2)
+                Clear-Screen
                 Set-Loops
             ;;
-
-            3) 
-                clear
+ 
+            3)
+                Clear-Screen
                 Set-Format
             ;;
-
-            4) 
-                clear
-                WipeDisk
+ 
+            4)
+                Clear-Screen
+                Start-Wipe
             ;;
-
-            5) 
-                exit 0 
+ 
+            5)
+                exit 0
             ;;
-            
-            *) 
-                clear
-                echo "Invalid choice. Please try again.."
+ 
+            *)
+                Clear-Screen
+                echo "Invalid choice. Please try again..."
                 sleep 1
             ;;
         esac
@@ -673,10 +842,30 @@ Show-Menu() {
 }
 
 
-
+# SYNOPSIS
 # Main
-
-Get-Tools dd stat realpath || exit 1
-
-Show-Menu
+#
+# DESCRIPTION
+# Entry point of the script, only run when the
+# file is executed and not when it is sourced (tests)
+#
+# EXAMPLE
+# main
+#
+# OUTPUTS
+# None
+#
+main() {
+    set -u
+ 
+    Parse-Args "$@"
+ 
+    Get-Tools dd stat realpath || exit 1
+ 
+    Show-Menu
+}
+ 
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+    main "$@"
+fi
 
