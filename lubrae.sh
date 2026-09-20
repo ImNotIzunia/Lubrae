@@ -862,7 +862,7 @@ Show-Menu() {
 main() {
     set -u
  
-    Parse-Args "$@"
+    Get-Args "$@"
  
     Get-Tools dd stat realpath || exit 1
  
