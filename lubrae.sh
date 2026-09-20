@@ -8,17 +8,34 @@
 #
 # NOTES
 # Author  : Izunia
-# Version : 0.1
+# Version : 0.5
 # License : MIT License
 
 
 set -u
 
-VERSION="0.1"
+VERSION="0.5"
+
 DISK=""
 LOOPS=1
 FORMAT=""
-TEST_MODE=0
+
+PATH="$PATH:/usr/local/sbin:/usr/sbin:/sbin"
+
+declare -A PACKAGE_OF=(
+    [dd]=coreutils
+    [stat]=coreutils
+    [realpath]=coreutils
+    [lsblk]=util-linux
+    [blockdev]=util-linux
+    [parted]=parted
+    [partprobe]=parted
+    [mkfs.ext4]=e2fsprogs
+    [mkfs.xfs]=xfsprogs
+    [mkfs.vfat]=dosfstools
+    [mkfs.exfat]=exfatprogs
+    [mkfs.ntfs]=ntfs-3g
+)
 
 
 # SYNOPSIS
@@ -57,7 +74,7 @@ Lubrae
 Version : $VERSION
 Usage :
     sudo ./lubrae.sh            Launch the main menu
-    ./lubrae.sh --file FILE     Launch the wipe on a file (testing without a risk)
+    ./lubrae.sh --file FILE     Launch the wipe on a file
     ./lubrae.sh --help          Show this menu
     ./lubrae.sh --version       Show the current version
 EOF
@@ -77,7 +94,6 @@ case "${1:-}" in
 
     --file)
         [[ -f "${2:-}" ]] || { echo "File not found: ${2:-}" >&2; exit 1; }
-        TEST_MODE=1
         DISK="$2"
     ;;
 
@@ -92,11 +108,105 @@ case "${1:-}" in
 esac
 
 
-if [[ $TEST_MODE -eq 0 && $EUID -ne 0 ]]; then
+if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "Lubrae only works on Linux" >&2
+    exit 1
+fi
+
+if (( BASH_VERSINFO[0] < 4)); then
+    echo "Lubrae needs Bash 4 or newer (found : $BASH_VERSION)" >&2
+    exit 1
+fi
+
+if [[ $EUID -ne 0 ]]; then
     echo "Lubrae needs to run with root privileges..." >&2
     echo "Run : sudo $0" >&2
     exit 1
 fi
+
+
+# SYNOPSIS
+# Install required Packages
+#
+# DESCRIPTION
+# Verify if all needed packages are installed
+# otherwise ask the user for the install
+#
+# EXAMPLE
+# Install-Packages
+# Get-Tools
+#
+# OUTPUTS
+# None
+#
+Install-Packages() {
+    local -a cmd
+
+    if [[ $EUID -eq 0 ]]; then
+        cmd=(apt-get install -y)
+    elif command -v sudo >/dev/null; then
+        cmd=(sudo apt-get install -y)
+    else
+        echo "Root privileges are required to install packages..."
+        return 1
+    fi
+
+    "${cmd[@]}" "$@" || { echo "Installation failed... Try : sudo apt update"; return 1; }
+}
+
+Get-Tools() {
+    local -a missing=() packages=()
+    local -A seen=()
+    local tool pkg answer
+
+    for tool in "$@"; do
+        command -v "$tool" >/dev/null || missing+=("$tool")
+    done
+
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    echo "Missing tools : ${missing[*]}"
+
+    if ! command -v apt-get >/dev/null; then
+        echo "apt-get not found"
+        return 1
+    fi
+
+    for tool in "${missing[@]}"; do
+        pkg="${PACKAGE_OF[$tool]:-}"
+
+        if [[ -z "$pkg" ]]; then
+            echo "No package found for $tool"
+            return 1
+        fi
+
+        if [[ -z "${seen[$pkg]:-}" ]]; then
+            seen[$pkg]=1
+            packages+=("$pkg")
+        fi
+    done
+
+    echo "Packages to install : ${packages[*]}"
+    
+    read -rp "Install them now with apt? [y/N] " answer || exit 0
+
+    if [[ ! "$answer" =~ ^[yY]$ ]]; then
+        echo "Abort Installation"
+        return 1
+    fi
+
+    Install-Packages "${packages[@]}" || return 1
+
+    for tool in "${missing[@]}"; do
+        if ! command -v "$tool" >/dev/null; then
+            echo "$tool is still missing after the installation"
+            return 1
+        fi
+    done
+}
+
 
 # SYNOPSIS
 # Set number of loops
@@ -159,7 +269,7 @@ Set-Format() {
     echo ""
 
     while true; do
-        read -rp "Format type (emptuy to cancel): " value || exit 0
+        read -rp "Format type (empty to cancel): " value || exit 0
 
         case "$value" in
             1)
@@ -223,11 +333,7 @@ Set-Disk() {
     local -a names=() locks=()
     local name size type model lock choice i
 
-    if [[ $TEST_MODE -eq 1 ]]; then
-        echo "Test mode enabled : target file $DISK"
-        read -rp "Press Enter to continue..." _ || exit 0
-        return
-    fi
+    Get-Tools lsblk blockdev || { Confirm; return; }
 
     while read -r name size type model; do
         [[ "$type" == "disk" ]] || continue
@@ -318,14 +424,13 @@ Wait-Partition() {
 }
 
 Check-Tools() {
-    local tool
+    local -a tools=("mkfs.$FORMAT")
 
-    for tool in parted "mkfs.$FORMAT"; do
-        if ! command -v "$tool" >/dev/null; then
-            echo "Missing tool : $tool"
-            return 1
-        fi
-    done
+    if [[ -b "$DISK" ]]; then
+        tools+=(parted partprobe)
+    fi
+
+    Get-Tools "${tools[@]}"
 }
 
 Format-Disk() {
@@ -422,7 +527,7 @@ WipeDisk(){
         return
     fi
 
-    if [[ -n "$FORMAT" && $TEST_MODE -eq 0 ]]; then
+    if [[ -n "$FORMAT" ]]; then
         Check-Tools || { Confirm; return; }
     fi
 
@@ -465,20 +570,14 @@ WipeDisk(){
     Set-Zero || { echo "dd failed, aborting..."; Confirm; return; }
 
     if [[ -n "$FORMAT" ]]; then
-        if [[ $TEST_MODE -eq 1 ]]; then
-            echo ""
-            echo "No formatting"
-        else
-            Format-Disk || echo "Formatting failed"
-        fi
+        echo ""
+        echo "No formatting"
+    else
+        Format-Disk || echo "Formatting failed"
     fi
 
     echo ""
     echo "Done"
-
-    if [[ $TEST_MODE -eq 0 ]]; then
-        DISK=""
-    fi
 
     Confirm
 }
@@ -576,5 +675,8 @@ Show-Menu() {
 
 
 # Main
+
+Get-Tools dd stat realpath || exit 1
+
 Show-Menu
 
