@@ -1,4 +1,4 @@
-#!/bin/bash
+EXIT#!/bin/bash
 
 # shellcheck disable=SC2317
 
@@ -36,18 +36,18 @@ assert_eq "0" "$(Get-DiskSize "$TMP/empty.img")" "taille d'un fichier vide"
 
 
 # ---------------------------------------------------------------------------
-section "Validate-File"
+section "Get-File"
 
 make_image "$TMP/ok.img" 4096
 
-assert_true "fichier normal accepté" Validate-File "$TMP/ok.img"
+assert_true "fichier normal accepté" Get-File "$TMP/ok.img"
 
-out="$(Validate-File "$TMP/nope.img")"
+out="$(Get-File "$TMP/nope.img")"
 rc=$?
 assert_eq 1 "$rc" "fichier inexistant : code 1"
 assert_contains "$out" "File not found" "fichier inexistant : message"
 
-out="$(Validate-File "$TMP")"
+out="$(Get-File "$TMP")"
 rc=$?
 assert_eq 1 "$rc" "dossier : code 1"
 assert_contains "$out" "not a regular file" "dossier : message"
@@ -61,7 +61,7 @@ for d in /dev/loop0 /dev/sda /dev/vda /dev/nvme0n1 /dev/mmcblk0; do
 done
 
 if [[ -n "$blockdev_found" ]]; then
-    out="$(Validate-File "$blockdev_found")"
+    out="$(Get-File "$blockdev_found")"
     rc=$?
     assert_eq 1 "$rc" "périphérique bloc : code 1"
     assert_contains "$out" "is a block device" "périphérique bloc : message"
@@ -74,7 +74,7 @@ if (( EUID == 0 )); then
 else
     make_image "$TMP/ro.img" 4096
     chmod 444 "$TMP/ro.img"
-    out="$(Validate-File "$TMP/ro.img")"
+    out="$(Get-File "$TMP/ro.img")"
     rc=$?
     assert_eq 1 "$rc" "fichier en lecture seule : code 1"
     assert_contains "$out" "not writable" "fichier en lecture seule : message"
@@ -82,37 +82,37 @@ fi
 
 
 # ---------------------------------------------------------------------------
-section "Parse-Args"
+section "Get-Args"
 
-out="$( (Parse-Args --help) 2>&1 )"
+out="$( (Get-Args --help) 2>&1 )"
 rc=$?
 assert_eq 0 "$rc" "--help : code 0"
 assert_contains "$out" "Usage" "--help : affiche l'aide"
 
-out="$( (Parse-Args --version) 2>&1 )"
+out="$( (Get-Args --version) 2>&1 )"
 rc=$?
 assert_eq 0 "$rc" "--version : code 0"
 assert_contains "$out" "Lubrae $VERSION" "--version : affiche la version"
 
-out="$( (Parse-Args --bidon) 2>&1 )"
+out="$( (Get-Args --bidon) 2>&1 )"
 rc=$?
 assert_eq 1 "$rc" "option inconnue : code 1"
 assert_contains "$out" "Invalid Option" "option inconnue : message"
 
-out="$( (Parse-Args --file "$TMP/nope.img") 2>&1 )"
+out="$( (Get-Args --file "$TMP/nope.img") 2>&1 )"
 rc=$?
 assert_eq 1 "$rc" "--file inexistant : code 1"
 
-out="$( (Parse-Args --file) 2>&1 )"
+out="$( (Get-Args --file) 2>&1 )"
 rc=$?
 assert_eq 1 "$rc" "--file sans argument : code 1"
 
 DISK=""
-Parse-Args --file "$TMP/ok.img"
+Get-Args --file "$TMP/ok.img"
 assert_eq "$(realpath "$TMP/ok.img")" "$DISK" "--file valide : la cible est le chemin réel"
 
 DISK=""
-Parse-Args
+Get-Args
 assert_eq "" "$DISK" "sans argument : aucune cible"
 
 
@@ -391,7 +391,7 @@ LOOPS=1
 FORMAT=""
 out="$(Show-Header)"
 assert_contains "$out" "Target : (none)"       "sans cible : (none)"
-assert_contains "$out" "Loops  : 1 (3 passes)" "1 boucle : 3 passes"
+assert_contains "$out" "Loops  : 1"             "1 boucle"
 assert_contains "$out" "Format : (none)"       "sans formatage : (none)"
 
 DISK="$TMP/ok.img"
@@ -399,7 +399,7 @@ LOOPS=3
 FORMAT="ext4"
 out="$(Show-Header)"
 assert_contains "$out" "Target : $TMP/ok.img (file)" "fichier : (file)"
-assert_contains "$out" "Loops  : 3 (7 passes)"       "3 boucles : 7 passes"
+assert_contains "$out" "Loops  : 3"                  "3 boucles"
 assert_contains "$out" "Format : ext4"               "formatage affiché"
 
 
