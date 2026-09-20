@@ -1,4 +1,4 @@
-#!bin/bash
+#!/bin/bash
 
 # SYNOPSIS
 # Lubrae  Main script functions
@@ -20,7 +20,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
     exit 1
 fi
 
-fi (( BASH_VERSINFO[0] < 4 )); then
+if (( BASH_VERSINFO[0] < 4 )); then
     echo "Lubrae needs Bash 4 or newer (found : $BASH_VERSION)" >&2
     exit 1
 fi
@@ -145,7 +145,7 @@ Get-Args() {
         ;;
 
         -f|--file)
-            Validate-File "${2:-}" >&2 || exit 1
+            Get-File "${2:-}" >&2 || exit 1
             DISK="$(realpath "$2")"
         ;;
 
@@ -371,7 +371,7 @@ Set-Disk() {
     local -a names=() lock=()
     local name size type model lock choice i
 
-    if [[ $ EUID -ne 0 ]]; then
+    if [[ $EUID -ne 0 ]]; then
         echo "Wiping a disk requires Lubrae to run with root privileges..."
         echo "Please run : sudo $0"
         echo "(A file can be wiped without root : choose \"File\")"
@@ -443,7 +443,7 @@ Set-File() {
             return
         fi
 
-        if Validate-File "$path"; then
+        if Get-File "$path"; then
             DISK="$(realpath "$path")"
             return
         fi
@@ -637,7 +637,7 @@ Start-Wipe() {
     fi
  
     if [[ -f "$DISK" ]]; then
-        Validate-File "$DISK" || { Wait-Key; return; }
+        Get-File "$DISK" || { Wait-Key; return; }
     fi
  
     if [[ -b "$DISK" && $EUID -ne 0 ]]; then
@@ -693,6 +693,8 @@ Start-Wipe() {
 
     echo "ALL DATA ON $DISK WILL BE DESTROYED"
 
+    read -rp "Type the exact path of the target to confirm (empty to cancel): " validate || exit 0
+
     if [[ "$validate" != "$DISK" ]]; then
         echo "Cancelled..."
         Wait-Key
@@ -708,7 +710,9 @@ Start-Wipe() {
     for (( n = 1; n <= LOOPS; n++)); do
         echo ""
         echo ">>> Pass $n/$LOOPS"
+        echo ""
         Set-Random || { echo "dd failed, aborting..."; Wait-Key; return; }
+        echo ""
         Set-Zero || { echo "dd failed, aborting..."; Wait-Key; return; }
     done
  
@@ -765,7 +769,7 @@ Show-Header() {
     echo "=========="
     echo ""
     echo "Target : ${DISK:-(none)}$kind"
-    echo "Loops  : $LOOPS)"
+    echo "Loops  : $LOOPS"
     echo "Format : ${FORMAT:-(none)}"
     echo ""
 }
