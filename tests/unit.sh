@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# shellcheck disable=SC2317,SC2329,SC2034
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # shellcheck source=/dev/null
