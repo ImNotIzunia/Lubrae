@@ -1,0 +1,5 @@
+# Force les fins de ligne Unix (LF) : bash ne sait pas exécuter un script en CRLF (Windows)
+*.sh      text eol=lf
+*.yml     text eol=lf
+Makefile  text eol=lf
+makefile  text eol=lf

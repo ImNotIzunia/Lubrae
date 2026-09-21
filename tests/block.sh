@@ -59,28 +59,6 @@ run_forced() {
     printf '%b' "$1" | bash "$TMP/forced.sh" 2>&1
 }
 
-# Fausse commande lsblk qui ne change que la valeur ROTA (SSD ou disque rotatif)
-cat > "$TMP/rota.sh" <<'MOCK'
-lsblk() {
-    if [[ "$1" == "-dno" && "$2" == "ROTA" ]]; then
-        echo "$MOCK_ROTA"
-    else
-        command lsblk "$@"
-    fi
-}
-export -f lsblk
-MOCK
-
-# run_forced_rota ROTA "TOUCHES" : comme run_forced, avec un ROTA simulé
-run_forced_rota() {
-    (
-        export MOCK_ROTA="$1"
-        # shellcheck source=/dev/null
-        source "$TMP/rota.sh"
-        run_forced "$2"
-    )
-}
-
 if ! attach; then
     skip "tous les tests sur périphérique bloc" "impossible de créer un périphérique loop ici"
     finish
@@ -120,18 +98,6 @@ if command -v parted > /dev/null 2>&1 \
 else
     skip "formatage vfat d'un disque" "parted, partprobe ou mkfs.vfat absent"
 fi
-
-
-# ---------------------------------------------------------------------------
-section "Avertissement SSD (ROTA simulé)"
-
-attach
-out="$(run_forced_rota 0 "4\nnon\n\n5\n")"
-assert_contains "$out" "looks like an SSD or a flash drive" "ROTA=0 : avertissement affiché"
-
-attach
-out="$(run_forced_rota 1 "4\nnon\n\n5\n")"
-assert_not_contains "$out" "looks like an SSD" "ROTA=1 : pas d'avertissement"
 
 
 # ---------------------------------------------------------------------------

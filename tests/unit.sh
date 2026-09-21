@@ -171,7 +171,13 @@ lsblk() {
                 "/dev/sr0 1G rom DVD"
         ;;
         "-nrpo MOUNTPOINT /dev/sda") printf '\n/\n' ;;
-        "-nrpo MOUNTPOINT /dev/sdb") printf '/media/usb\n' ;;
+        "-nrpo MOUNTPOINT /dev/sdb")
+            if [[ "${MOCK_SDB_MOUNTED:-1}" == 1 ]]; then
+                printf '/media/usb\n'
+            else
+                printf '\n'
+            fi
+        ;;
         "-nrpo MOUNTPOINT /dev/sdc") printf '\n\n' ;;
         "-dno ROTA "*) echo "${MOCK_ROTA:-1}" ;;
     esac
@@ -198,7 +204,7 @@ blockdev() { echo 1000; }
 
 if (( EUID != 0 )); then
     out="$(Set-Disk <<< "")"
-    assert_contains "$out" "requires root" "sans root : le choix d'un disque est refusé"
+    assert_contains "$out" "root privileges" "sans root : le choix d'un disque est refusé"
     skip "liste et verrous des disques" "nécessite root (lancé en utilisateur normal)"
 else
     skip "refus sans root" "lancé en root"
@@ -219,6 +225,20 @@ else
     DISK=""
     Set-Disk <<< "" > /dev/null
     assert_eq "" "$DISK" "entrée vide : rien de sélectionné"
+
+    # Régression : le verrou affiché doit être celui qui est appliqué, même
+    # quand on rouvre la liste plusieurs fois (l'état ne doit pas fuiter).
+    MOCK_SDB_MOUNTED=0
+    DISK=""
+    Set-Disk <<< $'2\n' > /dev/null
+    assert_eq "/dev/sdb" "$DISK" "sdb libre : il se sélectionne, même après d'autres ouvertures de la liste"
+
+    MOCK_SDB_MOUNTED=1
+    DISK=""
+    Set-Disk <<< $'2\n\n' > "$TMP/out.txt"
+    assert_contains "$(cat "$TMP/out.txt")" "/dev/sdb is locked (MOUNTED)" "sdb devenu monté : il est refusé à la réouverture de la liste"
+    assert_eq "" "$DISK" "sdb devenu monté : aucun disque verrouillé n'est sélectionné"
+    unset MOCK_SDB_MOUNTED
 fi
 
 unset -f lsblk blockdev

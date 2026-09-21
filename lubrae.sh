@@ -368,7 +368,7 @@ Is-SSD() {
 }
 
 Set-Disk() {
-    local -a names=() lock=()
+    local -a names=() locks=()
     local name size type model lock choice i
 
     if [[ $EUID -ne 0 ]]; then

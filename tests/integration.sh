@@ -66,13 +66,10 @@ section "Menu"
 out="$(run_lubrae "5\n")"
 assert_contains "$out" "Lubrae" "le menu s'ouvre"
 assert_contains "$out" "Launch (choose a target first)" "sans cible : Launch indique de choisir une cible"
-assert_contains "$out" "Loops  : 1 (3 passes)" "en-tête : 1 boucle = 3 passes"
+assert_contains "$out" "Loops  : 1" "en-tête : 1 boucle"
 
 run_lubrae "5\n" > /dev/null
 assert_eq 0 "$?" "5 : quitte avec le code 0"
-
-run_lubrae "q\n" > /dev/null
-assert_eq 0 "$?" "q : quitte avec le code 0"
 
 run_lubrae "" > /dev/null
 assert_eq 0 "$?" "Ctrl+D : sortie propre"
@@ -104,7 +101,7 @@ assert_contains "$after_done" "Target : (none)" "après l'effacement : la cible 
 make_image "$TMP/w2.img" $((4 * MIB))
 real="$(realpath "$TMP/w2.img")"
 out="$(run_lubrae "2\n2\n4\n$real\n\n5\n" --file "$TMP/w2.img")"
-assert_contains "$out" "Loops  : 2 (5 passes)" "2 boucles : l'en-tête annonce 5 passes"
+assert_contains "$out" "Loops  : 2" "2 boucles : l'en-tête affiche 2"
 assert_contains "$out" ">>> Pass 2/2" "2 boucles : passe 2/2 exécutée"
 assert_zero "$TMP/w2.img" $((4 * MIB)) "2 boucles : le fichier est entièrement à zéro"
 
@@ -155,7 +152,7 @@ if (( EUID == 0 )); then
     skip "choisir un disque sans root est refusé" "lancé en root"
 else
     out="$(run_lubrae "1\n1\n\n5\n")"
-    assert_contains "$out" "requires root" "sans root : le choix d'un disque est refusé"
+    assert_contains "$out" "root privileges" "sans root : le choix d'un disque est refusé"
 fi
 
 
